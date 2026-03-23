@@ -507,14 +507,11 @@ public class ChatClientGUI {
         return field;
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // CONNECT — uses connectedHost / connectedPort set by the dialog
-    // ─────────────────────────────────────────────────────────────
     void connect() {
         String[] creds = showLoginDialog();
         if (creds == null) System.exit(0);
 
-        // creds[0] = username, creds[1] = password, creds[2] = host
+
         connectedUsername = creds[0];
         connectedPassword = creds[1];
         connectedHost     = creds[2];
@@ -565,10 +562,7 @@ public class ChatClientGUI {
         }
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // LOGIN DIALOG — Same Device tab + ZeroTier/Hamachi tab
-    // Returns String[3]: { username, password, host }
-    // ─────────────────────────────────────────────────────────────
+
     String[] showLoginDialog() {
         JDialog dialog = new JDialog((Frame) null, "ChatLite Login", true);
         dialog.setSize(380, 340);
@@ -576,7 +570,6 @@ public class ChatClientGUI {
         dialog.setLayout(new BorderLayout());
         dialog.setResizable(false);
 
-        // ── Header ──────────────────────────────────────────────
         JPanel header = new JPanel(new BorderLayout());
         header.setBackground(C_DARK);
         header.setPreferredSize(new Dimension(0, 52));
@@ -594,7 +587,7 @@ public class ChatClientGUI {
         header.add(headerText, BorderLayout.CENTER);
         dialog.add(header, BorderLayout.NORTH);
 
-        // ── Tab buttons ─────────────────────────────────────────
+
         JButton btnSameDevice = new JButton("Same Device");
         JButton btnZeroTier   = new JButton("ZeroTier / Hamachi");
         btnSameDevice.setFont(F_MONO_SM);
@@ -607,7 +600,7 @@ public class ChatClientGUI {
         tabRow.add(btnSameDevice);
         tabRow.add(btnZeroTier);
 
-        // ── IP field (only visible in ZeroTier mode) ─────────────
+
         JTextField ipField = new JTextField() {
             @Override protected void paintComponent(Graphics g) {
                 super.paintComponent(g);
@@ -630,7 +623,7 @@ public class ChatClientGUI {
                 BorderFactory.createEmptyBorder(4, 8, 4, 8)));
         ipField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
 
-        // ── Username / Password fields ───────────────────────────
+
         JTextField usernameField = new JTextField() {
             @Override protected void paintComponent(Graphics g) {
                 super.paintComponent(g);
@@ -683,13 +676,13 @@ public class ChatClientGUI {
         JButton loginBtn = makeAccentButton("CONNECT");
         loginBtn.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
 
-        // ── Body panel ───────────────────────────────────────────
+
         JPanel body = new JPanel();
         body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
         body.setBackground(C_BG_SECONDARY);
         body.setBorder(BorderFactory.createEmptyBorder(14, 24, 14, 24));
 
-        body.add(ipField);          // hidden by default
+        body.add(ipField);
         body.add(Box.createVerticalStrut(8));
         body.add(usernameField);
         body.add(Box.createVerticalStrut(8));
@@ -712,7 +705,7 @@ public class ChatClientGUI {
         hint.setHorizontalAlignment(SwingConstants.CENTER);
         dialog.add(hint, BorderLayout.SOUTH);
 
-        // ── Tab switching logic ──────────────────────────────────
+
         final boolean[] useRemoteIp = {false};
 
         Runnable activateSameDevice = () -> {
@@ -747,7 +740,7 @@ public class ChatClientGUI {
         btnZeroTier.setBackground(C_BG_PRIMARY);
         btnZeroTier.setForeground(C_TEXT_MAIN);
 
-        // ── Login logic ──────────────────────────────────────────
+
         final String[][] result = {null};
 
         Runnable tryLogin = () -> {
@@ -1031,8 +1024,8 @@ public class ChatClientGUI {
                     ? ("" + name.charAt(0) + name.charAt(1)).toUpperCase() : name.toUpperCase();
             String status = userStatuses.getOrDefault(name, "Active");
             Color dotCol = status.equalsIgnoreCase("Busy")    ? C_AMBER
-                         : status.equalsIgnoreCase("Away")    ? C_RED
-                         : status.equalsIgnoreCase("Offline") ? C_TEXT_MUTED : C_GREEN;
+                    : status.equalsIgnoreCase("Away")    ? C_RED
+                    : status.equalsIgnoreCase("Offline") ? C_TEXT_MUTED : C_GREEN;
             JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
             row.setBackground(sel ? C_BG_PRIMARY : C_BG_SECONDARY);
             JLabel avatar = new JLabel(initials) {
