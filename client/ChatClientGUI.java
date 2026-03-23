@@ -35,6 +35,8 @@ public class ChatClientGUI {
     PrintWriter    out;
     String         connectedUsername = "guest";
     String         connectedPassword = "";
+    String         connectedHost     = "localhost";   // ← NEW: stores the host used
+    int            connectedPort     = 5000;
     String         currentRoom       = null;
 
     DefaultTableModel        tableModel;
@@ -505,14 +507,21 @@ public class ChatClientGUI {
         return field;
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // CONNECT — uses connectedHost / connectedPort set by the dialog
+    // ─────────────────────────────────────────────────────────────
     void connect() {
         String[] creds = showLoginDialog();
         if (creds == null) System.exit(0);
+
+        // creds[0] = username, creds[1] = password, creds[2] = host
         connectedUsername = creds[0];
         connectedPassword = creds[1];
+        connectedHost     = creds[2];
+        connectedPort     = 5000;
 
         try {
-            socket = new Socket("localhost", 5000);
+            socket = new Socket(connectedHost, connectedPort);
             in  = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             out = new PrintWriter(socket.getOutputStream(), true);
             sendRaw("HELLO " + connectedUsername + " " + connectedPassword);
@@ -550,24 +559,29 @@ public class ChatClientGUI {
         } catch (Exception ex) {
             SwingUtilities.invokeLater(() -> {
                 statusDot.setForeground(C_RED);
-                setStatus("Connection failed — localhost:5000 unreachable");
+                setStatus("Connection failed — " + connectedHost + ":" + connectedPort + " unreachable");
                 setLog("[ " + ts() + " ] " + ex.getMessage());
             });
         }
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // LOGIN DIALOG — Same Device tab + ZeroTier/Hamachi tab
+    // Returns String[3]: { username, password, host }
+    // ─────────────────────────────────────────────────────────────
     String[] showLoginDialog() {
         JDialog dialog = new JDialog((Frame) null, "ChatLite Login", true);
-        dialog.setSize(360, 280);
+        dialog.setSize(380, 340);
         dialog.setLocationRelativeTo(null);
         dialog.setLayout(new BorderLayout());
         dialog.setResizable(false);
 
+        // ── Header ──────────────────────────────────────────────
         JPanel header = new JPanel(new BorderLayout());
         header.setBackground(C_DARK);
         header.setPreferredSize(new Dimension(0, 52));
         header.setBorder(BorderFactory.createEmptyBorder(0, 18, 0, 18));
-        JLabel title = new JLabel("ChatLite Client");
+        JLabel title    = new JLabel("ChatLite Client");
         title.setFont(F_MONO_B);
         title.setForeground(new Color(0xC8, 0xC8, 0xE8));
         JLabel subtitle = new JLabel("Enter your registered username and password");
@@ -580,11 +594,43 @@ public class ChatClientGUI {
         header.add(headerText, BorderLayout.CENTER);
         dialog.add(header, BorderLayout.NORTH);
 
-        JPanel body = new JPanel();
-        body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
-        body.setBackground(C_BG_SECONDARY);
-        body.setBorder(BorderFactory.createEmptyBorder(18, 24, 18, 24));
+        // ── Tab buttons ─────────────────────────────────────────
+        JButton btnSameDevice = new JButton("Same Device");
+        JButton btnZeroTier   = new JButton("ZeroTier / Hamachi");
+        btnSameDevice.setFont(F_MONO_SM);
+        btnZeroTier  .setFont(F_MONO_SM);
+        btnSameDevice.setFocusPainted(false);
+        btnZeroTier  .setFocusPainted(false);
 
+        JPanel tabRow = new JPanel(new GridLayout(1, 2, 0, 0));
+        tabRow.setBackground(C_BG_SECONDARY);
+        tabRow.add(btnSameDevice);
+        tabRow.add(btnZeroTier);
+
+        // ── IP field (only visible in ZeroTier mode) ─────────────
+        JTextField ipField = new JTextField() {
+            @Override protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                if (getText().isEmpty() && !isFocusOwner()) {
+                    Graphics2D g2 = (Graphics2D) g;
+                    g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+                    g2.setColor(C_TEXT_MUTED); g2.setFont(getFont());
+                    FontMetrics fm = g2.getFontMetrics(); Insets ins = getInsets();
+                    g2.drawString("Server IP  e.g. 25.6.117.103", ins.left + 4,
+                            ins.top + (getHeight()-ins.top-ins.bottom+fm.getAscent()-fm.getDescent())/2);
+                }
+            }
+        };
+        ipField.setFont(F_MONO);
+        ipField.setBackground(C_BG_PRIMARY);
+        ipField.setForeground(C_TEXT_MAIN);
+        ipField.setCaretColor(C_ACCENT);
+        ipField.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(C_BORDER, 1),
+                BorderFactory.createEmptyBorder(4, 8, 4, 8)));
+        ipField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
+
+        // ── Username / Password fields ───────────────────────────
         JTextField usernameField = new JTextField() {
             @Override protected void paintComponent(Graphics g) {
                 super.paintComponent(g);
@@ -637,6 +683,14 @@ public class ChatClientGUI {
         JButton loginBtn = makeAccentButton("CONNECT");
         loginBtn.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
 
+        // ── Body panel ───────────────────────────────────────────
+        JPanel body = new JPanel();
+        body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
+        body.setBackground(C_BG_SECONDARY);
+        body.setBorder(BorderFactory.createEmptyBorder(14, 24, 14, 24));
+
+        body.add(ipField);          // hidden by default
+        body.add(Box.createVerticalStrut(8));
         body.add(usernameField);
         body.add(Box.createVerticalStrut(8));
         body.add(passwordField);
@@ -645,7 +699,11 @@ public class ChatClientGUI {
         body.add(Box.createVerticalStrut(8));
         body.add(loginBtn);
 
-        dialog.add(body, BorderLayout.CENTER);
+        JPanel centerPanel = new JPanel(new BorderLayout());
+        centerPanel.setBackground(C_BG_SECONDARY);
+        centerPanel.add(tabRow, BorderLayout.NORTH);
+        centerPanel.add(body,   BorderLayout.CENTER);
+        dialog.add(centerPanel, BorderLayout.CENTER);
 
         JLabel hint = new JLabel("Admin must register your username first.");
         hint.setFont(F_MONO_SM);
@@ -654,26 +712,70 @@ public class ChatClientGUI {
         hint.setHorizontalAlignment(SwingConstants.CENTER);
         dialog.add(hint, BorderLayout.SOUTH);
 
+        // ── Tab switching logic ──────────────────────────────────
+        final boolean[] useRemoteIp = {false};
+
+        Runnable activateSameDevice = () -> {
+            useRemoteIp[0] = false;
+            ipField.setVisible(false);
+            btnSameDevice.setBackground(C_ACCENT);
+            btnSameDevice.setForeground(Color.WHITE);
+            btnZeroTier.setBackground(C_BG_PRIMARY);
+            btnZeroTier.setForeground(C_TEXT_MAIN);
+            dialog.revalidate();
+            dialog.repaint();
+        };
+
+        Runnable activateZeroTier = () -> {
+            useRemoteIp[0] = true;
+            ipField.setVisible(true);
+            btnZeroTier.setBackground(C_ACCENT);
+            btnZeroTier.setForeground(Color.WHITE);
+            btnSameDevice.setBackground(C_BG_PRIMARY);
+            btnSameDevice.setForeground(C_TEXT_MAIN);
+            dialog.revalidate();
+            dialog.repaint();
+        };
+
+        btnSameDevice.addActionListener(e -> activateSameDevice.run());
+        btnZeroTier  .addActionListener(e -> activateZeroTier.run());
+
+        // Default: Same Device
+        ipField.setVisible(false);
+        btnSameDevice.setBackground(C_ACCENT);
+        btnSameDevice.setForeground(Color.WHITE);
+        btnZeroTier.setBackground(C_BG_PRIMARY);
+        btnZeroTier.setForeground(C_TEXT_MAIN);
+
+        // ── Login logic ──────────────────────────────────────────
         final String[][] result = {null};
 
         Runnable tryLogin = () -> {
             String name = usernameField.getText().trim();
             String pass = new String(passwordField.getPassword()).trim();
+            String host = useRemoteIp[0] ? ipField.getText().trim() : "localhost";
+
             if (name.isEmpty()) { errorLbl.setText("Username cannot be empty."); return; }
             if (pass.length() < 8) {
                 errorLbl.setText("Password must be at least 8 characters.");
                 passwordField.requestFocus();
                 return;
             }
+            if (useRemoteIp[0] && host.isEmpty()) {
+                errorLbl.setText("Please enter the server IP address.");
+                ipField.requestFocus();
+                return;
+            }
+
             try {
-                Socket testSocket = new Socket("localhost", 5000);
+                Socket testSocket = new Socket(host, 5000);
                 BufferedReader testIn  = new BufferedReader(new InputStreamReader(testSocket.getInputStream()));
                 PrintWriter    testOut = new PrintWriter(testSocket.getOutputStream(), true);
                 testOut.println("HELLO " + name + " " + pass);
                 String response = testIn.readLine();
                 testSocket.close();
                 if (response != null && response.startsWith("200")) {
-                    result[0] = new String[]{name, pass};
+                    result[0] = new String[]{name, pass, host};
                     dialog.dispose();
                 } else if (response != null && response.startsWith("403")) {
                     errorLbl.setText("Username not registered. Ask the admin.");
@@ -686,13 +788,14 @@ public class ChatClientGUI {
                     errorLbl.setText("Server error. Try again.");
                 }
             } catch (Exception ex) {
-                errorLbl.setText("Cannot reach server on port 5000.");
+                errorLbl.setText("Cannot reach " + host + ":5000");
             }
         };
 
-        loginBtn.addActionListener(e -> tryLogin.run());
+        loginBtn     .addActionListener(e -> tryLogin.run());
         usernameField.addActionListener(e -> passwordField.requestFocus());
         passwordField.addActionListener(e -> tryLogin.run());
+        ipField      .addActionListener(e -> usernameField.requestFocus());
 
         dialog.setVisible(true);
         return result[0];
@@ -706,46 +809,26 @@ public class ChatClientGUI {
         if (up.startsWith("JOIN ")) {
             String room = raw.substring(5).trim();
             if (!room.isEmpty()) sendRaw("JOIN " + room);
-
         } else if (up.startsWith("LEAVE")) {
             String room = raw.length() > 5 ? raw.substring(5).trim() : "";
             if (room.isEmpty() && currentRoom != null) room = currentRoom;
-            if (!room.isEmpty()) {
-                addRow("C", "LEAVE " + room, "proto");
-                sendRaw("LEAVE " + room);
-            }
-
+            if (!room.isEmpty()) { addRow("C", "LEAVE " + room, "proto"); sendRaw("LEAVE " + room); }
         } else if (up.startsWith("PM ")) {
             sendRaw("PM " + raw.substring(3).trim());
-
         } else if (up.equals("USERS")) {
-            addRow("C", "USERS", "proto");
-            showUsers = true;
-            showRooms = false;
-            sendRaw("USERS");
-
+            addRow("C", "USERS", "proto"); showUsers = true; showRooms = false; sendRaw("USERS");
         } else if (up.equals("ROOMS")) {
-            addRow("C", "ROOMS", "proto");
-            roomsModel.clear();
-            showRooms = true;
-            showUsers = false;
-            sendRaw("ROOMS");
-
+            addRow("C", "ROOMS", "proto"); roomsModel.clear(); showRooms = true; showUsers = false; sendRaw("ROOMS");
         } else if (up.equals("QUIT")) {
-            addRow("C", "QUIT", "proto");
-            sendRaw("QUIT");
-
+            addRow("C", "QUIT", "proto"); sendRaw("QUIT");
         } else if (up.startsWith("MSG ")) {
             String rest = raw.substring(4).trim();
             int sp = rest.indexOf(' ');
             if (sp > 0) {
-                String room = rest.substring(0, sp).trim();
-                String msg  = rest.substring(sp + 1).trim();
-                sendRaw("MSG " + room + " " + msg);
+                sendRaw("MSG " + rest.substring(0, sp).trim() + " " + rest.substring(sp + 1).trim());
             } else {
                 addRow("System", "Usage: MSG <room> <message>", "system");
             }
-
         } else if (up.startsWith("STATUS ")) {
             String st = raw.substring(7).trim();
             if (!st.isEmpty()) {
@@ -755,7 +838,6 @@ public class ChatClientGUI {
             } else {
                 addRow("System", "Usage: STATUS <Active|Busy|Away>", "system");
             }
-
         } else {
             if (currentRoom != null) {
                 sendRaw("MSG " + currentRoom + " " + raw);
@@ -763,7 +845,6 @@ public class ChatClientGUI {
                 addRow("System", "⚠ Not in a room — click a room on the left or type JOIN <room>", "system");
             }
         }
-
         inputField.setText("");
     }
 
@@ -777,170 +858,120 @@ public class ChatClientGUI {
         privateField.setText("");
     }
 
-    void sendRaw(String msg) {
-        if (out != null) out.println(msg);
-    }
+    void sendRaw(String msg) { if (out != null) out.println(msg); }
 
     void handle(String res) {
-
         if (res.startsWith("403")) {
-            addRow("System", "Access denied — username not registered. Contact the admin.", "system");
-            statusDot.setForeground(C_RED);
-            setStatus("Rejected — not registered");
-            setLog("[ " + ts() + " ] 403 NOT REGISTERED");
+            addRow("System", "Access denied — username not registered.", "system");
+            statusDot.setForeground(C_RED); setStatus("Rejected — not registered");
             try { if (socket != null) socket.close(); } catch (Exception ignored) {}
             return;
         }
-
         if (res.startsWith("200 STATUS ")) {
-            String st = res.substring(11).trim();
-            setLog("[ " + ts() + " ] Status changed to " + st);
-            return;
+            setLog("[ " + ts() + " ] Status changed to " + res.substring(11).trim()); return;
         }
-
         if (res.startsWith("200 WELCOME") || res.equals("200")) {
             connectTime = System.currentTimeMillis();
             statusDot.setForeground(C_GREEN);
             setStatus("Connected as " + connectedUsername);
-            connLabel.setText("CONNECTED TO: localhost:5000");
+            connLabel.setText("CONNECTED TO: " + connectedHost + ":5000");
             userBadgeLabel.setText("  ● " + connectedUsername + "  ");
             userBadgeLabel.setForeground(C_ACCENT);
             setLog("[ " + ts() + " ] 200 WELCOME");
             addRow("System", "Welcome " + connectedUsername + "! Use JOIN <room> to start.", "system");
-            sendRaw("ROOMS");
-            sendRaw("USERS");
+            sendRaw("ROOMS"); sendRaw("USERS");
             new javax.swing.Timer(1000, e -> {
                 if (connectTime == 0) return;
                 long sec = (System.currentTimeMillis() - connectTime) / 1000;
-                uptimeLabel.setText(String.format("%02d:%02d:%02d",
-                        sec / 3600, (sec % 3600) / 60, sec % 60));
+                uptimeLabel.setText(String.format("%02d:%02d:%02d", sec/3600, (sec%3600)/60, sec%60));
             }).start();
             new javax.swing.Timer(3000, e -> { sendRaw("ROOMS"); sendRaw("USERS"); }).start();
             return;
         }
-
         if (res.startsWith("210")) {
-            String room = res.contains("JOINED ")
-                    ? res.substring(res.indexOf("JOINED ") + 7).trim() : "";
+            String room = res.contains("JOINED ") ? res.substring(res.indexOf("JOINED ")+7).trim() : "";
             currentRoom = room.isEmpty() ? currentRoom : room;
             addRow("System", "You joined " + currentRoom, "joined");
             setStatus("Connected as " + connectedUsername + "  ·  " + currentRoom);
-            setLog("[ " + ts() + " ] 210 JOINED " + currentRoom);
             return;
         }
-
         if (res.startsWith("211")) { setLog("[ " + ts() + " ] 211 SENT"); return; }
-
         if (res.startsWith("212")) { setLog("[ " + ts() + " ] 212 PRIVATE SENT"); return; }
-
         if (res.equals("213 END") || res.equals("213END")) {
-            if (selectedUser != null && userCombo.getItemCount() > 0) {
-                for (int i = 0; i < userCombo.getItemCount(); i++) {
-                    if (selectedUser.equals(userCombo.getItemAt(i))) {
-                        userCombo.setSelectedIndex(i);
-                        break;
-                    }
-                }
-            }
+            if (selectedUser != null && userCombo.getItemCount() > 0)
+                for (int i = 0; i < userCombo.getItemCount(); i++)
+                    if (selectedUser.equals(userCombo.getItemAt(i))) { userCombo.setSelectedIndex(i); break; }
             selectedUser = null;
-            if (showUsers) {
-                addRow("S", "213 END", "proto");
-                showUsers = false;
-            }
+            if (showUsers) { addRow("S", "213 END", "proto"); showUsers = false; }
             setLog("[ " + ts() + " ] 213 END — " + usersModel.getSize() + " users");
             return;
         }
-
         if (res.startsWith("213U ") || res.startsWith("213U\t")) {
-            String rest = res.substring(res.indexOf(' ') + 1).trim();
+            String rest = res.substring(res.indexOf(' ')+1).trim();
             String[] tokens = rest.split(" ", 2);
             String user   = tokens[0].trim();
             String status = tokens.length > 1 ? tokens[1].trim() : "Active";
             if (showUsers) addRow("S", res.trim(), "proto");
             if (!user.isEmpty()) {
                 userStatuses.put(user, status);
-                if (!usersModel.contains(user)) {
-                    usersModel.addElement(user);
-                    userCombo.addItem(user);
-                }
+                if (!usersModel.contains(user)) { usersModel.addElement(user); userCombo.addItem(user); }
             }
-            usersList.repaint();
-            return;
+            usersList.repaint(); return;
         }
-
         if (res.equals("213") || (res.startsWith("213") && !res.startsWith("213U"))) {
             selectedUser = (String) userCombo.getSelectedItem();
-            usersModel.clear();
-            userCombo.removeAllItems();
+            usersModel.clear(); userCombo.removeAllItems();
             if (showUsers) addRow("S", "213", "proto");
             return;
         }
-
         if (res.startsWith("214")) {
             String room = res.length() > 4 ? res.substring(4).trim() : "";
             if (showRooms) addRow("S", res.trim(), "proto");
             if (!room.isEmpty() && !roomsModel.contains(room)) roomsModel.addElement(room);
             if (roomsEndTimer != null) roomsEndTimer.stop();
             roomsEndTimer = new javax.swing.Timer(400, e -> { showRooms = false; roomsEndTimer = null; });
-            roomsEndTimer.setRepeats(false);
-            roomsEndTimer.start();
+            roomsEndTimer.setRepeats(false); roomsEndTimer.start();
             return;
         }
         showRooms = false;
-
         if (res.startsWith("215")) {
             String left = res.length() > 8 ? res.substring(8).trim() : "";
             addRow("S", res.trim(), "proto");
             if (left.equals(currentRoom)) {
-                currentRoom = null;
-                tableModel.setRowCount(0);
+                currentRoom = null; tableModel.setRowCount(0);
                 addRow("System", "You left " + left + ". Type JOIN <room> to join another.", "system");
                 setStatus("Connected as " + connectedUsername + "  ·  no room");
             } else {
                 addRow("System", "Left " + left + " (you remain in " + currentRoom + ").", "system");
             }
-            setLog("[ " + ts() + " ] 215 LEFT " + left);
             return;
         }
-
         if (res.startsWith("221")) {
             addRow("S", res.trim(), "proto");
             setChatEnabled(false);
             addRow("System", "Disconnected. Goodbye!", "system");
-            statusDot.setForeground(C_RED);
-            setStatus("Disconnected");
+            statusDot.setForeground(C_RED); setStatus("Disconnected");
             connLabel.setText("CONNECTED TO: —");
-            userBadgeLabel.setText("  ● —  ");
-            userBadgeLabel.setForeground(C_TEXT_MUTED);
-            connectTime = 0;
-            uptimeLabel.setText("00:00:00");
-            setLog("[ " + ts() + " ] 221 BYE");
+            userBadgeLabel.setText("  ● —  "); userBadgeLabel.setForeground(C_TEXT_MUTED);
+            connectTime = 0; uptimeLabel.setText("00:00:00");
             try { if (socket != null) socket.close(); } catch (Exception ignored) {}
             return;
         }
-
         if (res.contains(":")) {
             String[] parts = res.split(":", 2);
             String user = parts[0].trim();
             String msg  = parts[1].trim();
-
             if (user.equals("System") && msg.contains(" is now ")) {
                 int idx = msg.indexOf(" is now ");
-                String who    = msg.substring(0, idx).trim();
-                String status = msg.substring(idx + 8).trim();
-                userStatuses.put(who, status);
+                userStatuses.put(msg.substring(0, idx).trim(), msg.substring(idx+8).trim());
                 usersList.repaint();
             }
-
             String type = user.equalsIgnoreCase("System")
                     ? (msg.toLowerCase().contains("join") ? "joined"
-                    :  msg.toLowerCase().contains("left") ? "left" : "system")
-                    : "normal";
+                    :  msg.toLowerCase().contains("left") ? "left" : "system") : "normal";
             addRow(user, msg, type);
-            setLog("[ " + ts() + " ] msg from " + user);
             return;
         }
-
         addRow("Server", res, "system");
         setLog("[ " + ts() + " ] " + res);
     }
@@ -966,10 +997,7 @@ public class ChatClientGUI {
         sendBtn.setEnabled(enabled);
         inputField.setBackground(enabled ? C_BG_PRIMARY : C_BG_SECONDARY);
         sendBtn.setBackground(enabled ? C_ACCENT : C_TEXT_MUTED);
-        if (!enabled) {
-            tableModel.setRowCount(0);
-            table.putClientProperty("rowTypeCount", 0);
-        }
+        if (!enabled) { tableModel.setRowCount(0); table.putClientProperty("rowTypeCount", 0); }
     }
 
     void setStatus(String txt) { if (statusLabel != null) statusLabel.setText(txt); }
@@ -982,14 +1010,12 @@ public class ChatClientGUI {
             JLabel lbl = (JLabel) super.getListCellRendererComponent(list, value, idx, sel, focus);
             lbl.setFont(F_MONO);
             if (sel) {
-                lbl.setBackground(C_BG_PRIMARY);
-                lbl.setForeground(C_ACCENT);
+                lbl.setBackground(C_BG_PRIMARY); lbl.setForeground(C_ACCENT);
                 lbl.setBorder(BorderFactory.createCompoundBorder(
                         BorderFactory.createMatteBorder(0, 2, 0, 0, C_ACCENT),
                         BorderFactory.createEmptyBorder(4, 10, 4, 12)));
             } else {
-                lbl.setBackground(C_BG_SECONDARY);
-                lbl.setForeground(C_TEXT_MUTED);
+                lbl.setBackground(C_BG_SECONDARY); lbl.setForeground(C_TEXT_MUTED);
                 lbl.setBorder(BorderFactory.createEmptyBorder(4, 12, 4, 12));
             }
             lbl.setText("⊟ " + value);
@@ -1002,44 +1028,30 @@ public class ChatClientGUI {
                 JList<?> list, Object value, int idx, boolean sel, boolean focus) {
             String name = value == null ? "" : value.toString();
             String initials = name.length() >= 2
-                    ? ("" + name.charAt(0) + name.charAt(1)).toUpperCase()
-                    : name.toUpperCase();
-
+                    ? ("" + name.charAt(0) + name.charAt(1)).toUpperCase() : name.toUpperCase();
             String status = userStatuses.getOrDefault(name, "Active");
             Color dotCol = status.equalsIgnoreCase("Busy")    ? C_AMBER
-                    : status.equalsIgnoreCase("Away")    ? C_RED
-                    : status.equalsIgnoreCase("Offline") ? C_TEXT_MUTED
-                    : C_GREEN;
-
+                         : status.equalsIgnoreCase("Away")    ? C_RED
+                         : status.equalsIgnoreCase("Offline") ? C_TEXT_MUTED : C_GREEN;
             JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
             row.setBackground(sel ? C_BG_PRIMARY : C_BG_SECONDARY);
-
             JLabel avatar = new JLabel(initials) {
                 protected void paintComponent(Graphics g) {
                     Graphics2D g2 = (Graphics2D) g;
                     g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                    g2.setColor(C_ACCENT.brighter());
-                    g2.fillOval(0, 0, getWidth() - 1, getHeight() - 1);
+                    g2.setColor(C_ACCENT.brighter()); g2.fillOval(0, 0, getWidth()-1, getHeight()-1);
                     super.paintComponent(g);
                 }
             };
             avatar.setPreferredSize(new Dimension(22, 22));
             avatar.setHorizontalAlignment(SwingConstants.CENTER);
             avatar.setFont(new Font("Courier New", Font.BOLD, 8));
-            avatar.setForeground(Color.WHITE);
-            avatar.setOpaque(false);
-
+            avatar.setForeground(Color.WHITE); avatar.setOpaque(false);
             JLabel nameLbl = new JLabel(name + " (" + status + ")");
-            nameLbl.setFont(F_MONO);
-            nameLbl.setForeground(sel ? C_TEXT_MAIN : C_TEXT_MUTED);
-
+            nameLbl.setFont(F_MONO); nameLbl.setForeground(sel ? C_TEXT_MAIN : C_TEXT_MUTED);
             JLabel dot = new JLabel("●");
-            dot.setFont(new Font("Courier New", Font.PLAIN, 8));
-            dot.setForeground(dotCol);
-
-            row.add(avatar);
-            row.add(nameLbl);
-            row.add(dot);
+            dot.setFont(new Font("Courier New", Font.PLAIN, 8)); dot.setForeground(dotCol);
+            row.add(avatar); row.add(nameLbl); row.add(dot);
             return row;
         }
     }
@@ -1051,21 +1063,16 @@ public class ChatClientGUI {
             c.setFont(col == 2 ? F_MONO_SM : F_MONO);
             String type = (String) tbl.getClientProperty("rowType:" + row);
             if (type == null) type = "normal";
-
-            if (sel) {
-                c.setBackground(new Color(0xEE, 0xED, 0xFE));
-                c.setForeground(C_ACCENT_DARK);
-                return c;
-            }
-            c.setBackground(row % 2 == 0 ? C_BG_PRIMARY : new Color(0xFA, 0xFA, 0xF8));
+            if (sel) { c.setBackground(new Color(0xEE,0xED,0xFE)); c.setForeground(C_ACCENT_DARK); return c; }
+            c.setBackground(row % 2 == 0 ? C_BG_PRIMARY : new Color(0xFA,0xFA,0xF8));
             switch (type) {
                 case "joined" -> c.setForeground(col == 0 ? C_TEXT_MUTED : C_GREEN);
                 case "left"   -> c.setForeground(col == 0 ? C_TEXT_MUTED : C_RED);
-                case "pm"     -> { c.setForeground(C_RED); c.setBackground(new Color(0xFF, 0xF0, 0xEE)); }
+                case "pm"     -> { c.setForeground(C_RED); c.setBackground(new Color(0xFF,0xF0,0xEE)); }
                 case "system" -> c.setForeground(C_TEXT_MUTED);
                 case "proto"  -> {
-                    c.setBackground(new Color(0xF0, 0xF0, 0xFF));
-                    c.setForeground(col == 0 ? C_ACCENT : new Color(0x18, 0x5F, 0xA5));
+                    c.setBackground(new Color(0xF0,0xF0,0xFF));
+                    c.setForeground(col == 0 ? C_ACCENT : new Color(0x18,0x5F,0xA5));
                     c.setFont(F_MONO_SM);
                 }
                 default -> c.setForeground(col == 0 ? C_ACCENT : C_TEXT_MAIN);
