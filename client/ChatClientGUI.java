@@ -300,7 +300,7 @@ public class ChatClientGUI {
         JScrollPane scroll = new JScrollPane(table);
         styleScrollPane(scroll);
 
-        inputField = makePlaceholderField("Type message here…", F_MONO);
+        inputField = makePlaceholderField("Type message here", F_MONO);
         inputField.addActionListener(e -> sendMessage());
 
         sendBtn = makeAccentButton("SEND");
@@ -589,7 +589,7 @@ public class ChatClientGUI {
 
 
         JButton btnSameDevice = new JButton("Same Device");
-        JButton btnZeroTier   = new JButton("ZeroTier / Hamachi");
+        JButton btnZeroTier   = new JButton("IP Address");
         btnSameDevice.setFont(F_MONO_SM);
         btnZeroTier  .setFont(F_MONO_SM);
         btnSameDevice.setFocusPainted(false);
@@ -609,7 +609,7 @@ public class ChatClientGUI {
                     g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
                     g2.setColor(C_TEXT_MUTED); g2.setFont(getFont());
                     FontMetrics fm = g2.getFontMetrics(); Insets ins = getInsets();
-                    g2.drawString("Server IP  e.g. 25.6.117.103", ins.left + 4,
+                    g2.drawString("Server IP ", ins.left + 4,
                             ins.top + (getHeight()-ins.top-ins.bottom+fm.getAscent()-fm.getDescent())/2);
                 }
             }
@@ -632,7 +632,7 @@ public class ChatClientGUI {
                     g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
                     g2.setColor(C_TEXT_MUTED); g2.setFont(getFont());
                     FontMetrics fm = g2.getFontMetrics(); Insets ins = getInsets();
-                    g2.drawString("Username — registered by admin", ins.left + 4,
+                    g2.drawString("Username", ins.left + 4,
                             ins.top + (getHeight()-ins.top-ins.bottom+fm.getAscent()-fm.getDescent())/2);
                 }
             }
@@ -654,7 +654,7 @@ public class ChatClientGUI {
                     g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
                     g2.setColor(C_TEXT_MUTED); g2.setFont(getFont());
                     FontMetrics fm = g2.getFontMetrics(); Insets ins = getInsets();
-                    g2.drawString("Password — minimum 8 characters", ins.left + 4,
+                    g2.drawString("Password", ins.left + 4,
                             ins.top + (getHeight()-ins.top-ins.bottom+fm.getAscent()-fm.getDescent())/2);
                 }
             }
