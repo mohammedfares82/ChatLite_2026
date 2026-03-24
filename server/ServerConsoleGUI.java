@@ -95,7 +95,6 @@ public class ServerConsoleGUI {
     void refreshSessions() {
         SwingUtilities.invokeLater(() -> {
             sessionsModel.setRowCount(0);
-            mailboxModel.setRowCount(0);
             logsTableModel.setRowCount(0);
             usersListModel.clear();
             for (ClientSession s : UserManager.getAllUsers()) {
@@ -103,12 +102,6 @@ public class ServerConsoleGUI {
                         s.getUsername(),
                         s.getStatus().toUpperCase(),
                         s.getAssignedIp()
-                });
-                mailboxModel.addRow(new Object[]{
-                        s.getUsername(),
-                        s.getInbox(),
-                        s.getSent(),
-                        "0 (0 KB)"
                 });
                 logsTableModel.addRow(new Object[]{
                         s.getUsername(),
@@ -438,8 +431,7 @@ public class ServerConsoleGUI {
         JPanel panel = new JPanel(new BorderLayout(0, 6));
         panel.setPreferredSize(new Dimension(260, 0));
         panel.setBackground(C_BG_PRIMARY);
-        panel.add(makeMailboxPanel(),  BorderLayout.CENTER);
-        panel.add(makeSettingsPanel(), BorderLayout.SOUTH);
+        panel.add(makeSettingsPanel(), BorderLayout.NORTH);
         return panel;
     }
 
