@@ -524,7 +524,7 @@ public class ServerConsoleGUI {
         applyBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
         applyBtn.addActionListener(e -> appendLog("INFO",
                 "Settings applied — max size: " + maxSize.getSelectedItem()
-                        + ", filter: " + filterCombo.getSelectedItem()));
+                + ", filter: " + filterCombo.getSelectedItem()));
         inner.add(applyBtn);
 
         panel.add(inner, BorderLayout.CENTER);
