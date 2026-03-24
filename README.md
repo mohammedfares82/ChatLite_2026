@@ -1,9 +1,6 @@
 # ChatLite
 
-**Student 1:** Mohammed Fares (12323073)  
-**Student 2:** Tahseen Qut (12240962)
 
----
 
 ## Features
 
@@ -47,7 +44,7 @@
 
 3. **Start Chatting**
    - `JOIN room1`
-   - `PM username message`
+   - Type Your messages 
 
 ---
 
