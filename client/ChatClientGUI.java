@@ -35,7 +35,7 @@ public class ChatClientGUI {
     PrintWriter    out;
     String         connectedUsername = "guest";
     String         connectedPassword = "";
-    String         connectedHost     = "localhost";   // ← NEW: stores the host used
+    String         connectedHost     = "localhost";
     int            connectedPort     = 5000;
     String         currentRoom       = null;
 
@@ -511,7 +511,6 @@ public class ChatClientGUI {
         String[] creds = showLoginDialog();
         if (creds == null) System.exit(0);
 
-
         connectedUsername = creds[0];
         connectedPassword = creds[1];
         connectedHost     = creds[2];
@@ -562,7 +561,6 @@ public class ChatClientGUI {
         }
     }
 
-
     String[] showLoginDialog() {
         JDialog dialog = new JDialog((Frame) null, "ChatLite Login", true);
         dialog.setSize(380, 340);
@@ -587,7 +585,6 @@ public class ChatClientGUI {
         header.add(headerText, BorderLayout.CENTER);
         dialog.add(header, BorderLayout.NORTH);
 
-
         JButton btnSameDevice = new JButton("Same Device");
         JButton btnZeroTier   = new JButton("IP Address");
         btnSameDevice.setFont(F_MONO_SM);
@@ -599,7 +596,6 @@ public class ChatClientGUI {
         tabRow.setBackground(C_BG_SECONDARY);
         tabRow.add(btnSameDevice);
         tabRow.add(btnZeroTier);
-
 
         JTextField ipField = new JTextField() {
             @Override protected void paintComponent(Graphics g) {
@@ -622,7 +618,6 @@ public class ChatClientGUI {
                 BorderFactory.createLineBorder(C_BORDER, 1),
                 BorderFactory.createEmptyBorder(4, 8, 4, 8)));
         ipField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
-
 
         JTextField usernameField = new JTextField() {
             @Override protected void paintComponent(Graphics g) {
@@ -676,7 +671,6 @@ public class ChatClientGUI {
         JButton loginBtn = makeAccentButton("CONNECT");
         loginBtn.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
 
-
         JPanel body = new JPanel();
         body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
         body.setBackground(C_BG_SECONDARY);
@@ -705,7 +699,6 @@ public class ChatClientGUI {
         hint.setHorizontalAlignment(SwingConstants.CENTER);
         dialog.add(hint, BorderLayout.SOUTH);
 
-
         final boolean[] useRemoteIp = {false};
 
         Runnable activateSameDevice = () -> {
@@ -733,13 +726,11 @@ public class ChatClientGUI {
         btnSameDevice.addActionListener(e -> activateSameDevice.run());
         btnZeroTier  .addActionListener(e -> activateZeroTier.run());
 
-        // Default: Same Device
         ipField.setVisible(false);
         btnSameDevice.setBackground(C_ACCENT);
         btnSameDevice.setForeground(Color.WHITE);
         btnZeroTier.setBackground(C_BG_PRIMARY);
         btnZeroTier.setForeground(C_TEXT_MAIN);
-
 
         final String[][] result = {null};
 
@@ -854,6 +845,25 @@ public class ChatClientGUI {
     void sendRaw(String msg) { if (out != null) out.println(msg); }
 
     void handle(String res) {
+        // ── FIX: handle password reset before the generic 221 handler ──
+        if (res.startsWith("421")) {
+            setChatEnabled(false);
+            addRow("System", "⚠ Your password was reset by the admin. Please sign in again.", "system");
+            statusDot.setForeground(C_AMBER);
+            setStatus("Session ended — password reset");
+            connLabel.setText("CONNECTED TO: —");
+            userBadgeLabel.setText("  ● —  ");
+            userBadgeLabel.setForeground(C_TEXT_MUTED);
+            connectTime = 0;
+            uptimeLabel.setText("00:00:00");
+            try { if (socket != null) socket.close(); } catch (Exception ignored) {}
+            int choice = JOptionPane.showConfirmDialog(null,
+                    "Your password has been changed by the administrator.\nReconnect with your new credentials?",
+                    "Password Reset", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+            if (choice == JOptionPane.YES_OPTION) connect();
+            return;
+        }
+
         if (res.startsWith("403")) {
             addRow("System", "Access denied — username not registered.", "system");
             statusDot.setForeground(C_RED); setStatus("Rejected — not registered");
