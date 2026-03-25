@@ -286,6 +286,75 @@ public class ServerConsoleGUI {
         styleScrollPane(usersScroll);
         inner.add(usersScroll);
 
+        JPanel btnRow = new JPanel(new GridLayout(1, 2, 6, 0));
+        btnRow.setBackground(C_BG_SECONDARY);
+        btnRow.setBorder(BorderFactory.createEmptyBorder(6, 10, 6, 10));
+        btnRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 32));
+
+        JButton deleteBtn = makeDangerButton("Delete User");
+        deleteBtn.addActionListener(e -> {
+            String sel = usersList.getSelectedValue();
+            if (sel == null) {
+                JOptionPane.showMessageDialog(null, "Select a user first.", "Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+            int confirm = JOptionPane.showConfirmDialog(null, "Delete user '" + sel + "'?",
+                    "Confirm Delete", JOptionPane.YES_NO_OPTION);
+            if (confirm == JOptionPane.YES_OPTION) {
+                // ── FIX: kick the active session before unregistering ──
+                ClientSession activeSession = UserManager.getUser(sel);
+                if (activeSession != null) {
+                    try {
+                        PrintWriter kickOut = new PrintWriter(
+                                activeSession.getConnectionSocket().getOutputStream(), true);
+                        kickOut.println("221 BYE");
+                        activeSession.getConnectionSocket().close();
+                    } catch (Exception ignored) {}
+                    UserManager.removeUser(sel);
+                }
+                UserManager.unregisterUsername(sel);
+                usersListModel.removeElement(sel);
+                appendLog("AUTH", "User '" + sel + "' deleted and kicked by admin.");
+            }
+        });
+
+        JButton resetBtn = makeWideButton("Reset Password");
+        resetBtn.addActionListener(e -> {
+            String sel = usersList.getSelectedValue();
+            if (sel == null) {
+                JOptionPane.showMessageDialog(null, "Select a user first.", "Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+            String newPass = JOptionPane.showInputDialog(null,
+                    "New password for '" + sel + "' (min 8 chars):",
+                    "Reset Password", JOptionPane.PLAIN_MESSAGE);
+            if (newPass == null) return;
+            if (newPass.trim().length() < 8) {
+                JOptionPane.showMessageDialog(null, "Password must be at least 8 characters.",
+                        "Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+            UserManager.registerUsername(sel, newPass.trim());
+            // ── FIX: disconnect active session so user must re-login with new password ──
+            ClientSession activeSession = UserManager.getUser(sel);
+            if (activeSession != null) {
+                try {
+                    PrintWriter kickOut = new PrintWriter(
+                            activeSession.getConnectionSocket().getOutputStream(), true);
+                    kickOut.println("421 PASSWORD_RESET");
+                    activeSession.getConnectionSocket().close();
+                } catch (Exception ignored) {}
+                UserManager.removeUser(sel);
+            }
+            appendLog("AUTH", "Password reset for '" + sel + "' by admin — session invalidated.");
+            JOptionPane.showMessageDialog(null, "Password updated successfully.", "Done",
+                    JOptionPane.INFORMATION_MESSAGE);
+        });
+
+        btnRow.add(deleteBtn);
+        btnRow.add(resetBtn);
+        inner.add(btnRow);
+
         JPanel dupCheck = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
         dupCheck.setBackground(C_BG_SECONDARY);
         JLabel warn = new JLabel("!");
@@ -524,7 +593,7 @@ public class ServerConsoleGUI {
         applyBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
         applyBtn.addActionListener(e -> appendLog("INFO",
                 "Settings applied — max size: " + maxSize.getSelectedItem()
-                + ", filter: " + filterCombo.getSelectedItem()));
+                        + ", filter: " + filterCombo.getSelectedItem()));
         inner.add(applyBtn);
 
         panel.add(inner, BorderLayout.CENTER);
