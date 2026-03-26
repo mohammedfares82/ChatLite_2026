@@ -64,6 +64,9 @@ public class ChatClientGUI {
     java.util.Map<String,String> userStatuses = new java.util.concurrent.ConcurrentHashMap<>();
     javax.swing.Timer            roomsEndTimer = null;
 
+    // ── Export: track last auto-saved snapshot so we don't double-save ──
+    private int lastExportedRowCount = 0;
+
     public ChatClientGUI() {
         JFrame frame = new JFrame("ChatLite Client");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -124,6 +127,32 @@ public class ChatClientGUI {
         uptimeLabel.setFont(F_MONO_B);
         uptimeLabel.setForeground(C_ACCENT);
         center.add(uptimeLabel);
+
+        center.add(makeSep());
+
+        // ── EXPORT CHAT button in top bar ──
+        JButton exportBtn = new JButton("⬇ EXPORT");
+        exportBtn.setFont(F_MONO_SM);
+        exportBtn.setBackground(C_BG_PRIMARY);
+        exportBtn.setForeground(C_ACCENT);
+        exportBtn.setFocusPainted(false);
+        exportBtn.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(C_ACCENT, 1),
+                BorderFactory.createEmptyBorder(3, 10, 3, 10)));
+        exportBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        exportBtn.setToolTipText("Export current chat log to .txt file");
+        exportBtn.addMouseListener(new MouseAdapter() {
+            public void mouseEntered(MouseEvent e) {
+                exportBtn.setBackground(C_ACCENT);
+                exportBtn.setForeground(Color.WHITE);
+            }
+            public void mouseExited(MouseEvent e) {
+                exportBtn.setBackground(C_BG_PRIMARY);
+                exportBtn.setForeground(C_ACCENT);
+            }
+        });
+        exportBtn.addActionListener(e -> exportChat("manual export"));
+        center.add(exportBtn);
 
         bar.add(center, BorderLayout.CENTER);
 
@@ -507,6 +536,64 @@ public class ChatClientGUI {
         return field;
     }
 
+    // ════════════════════════════════════════════════════════════════
+    //  EXPORT CHAT
+    //  Format per line:  name: message <HH:mm:ss dd/MM/yyyy>
+    //  Saved to project root (same folder as server_logs_*.txt)
+    // ════════════════════════════════════════════════════════════════
+    void exportChat(String reason) {
+        int rowCount = tableModel.getRowCount();
+        if (rowCount == 0) {
+            setLog("[ " + ts() + " ] Nothing to export.");
+            return;
+        }
+
+        // Don't double-auto-save if nothing new was added since last save
+        if (reason.startsWith("auto") && rowCount == lastExportedRowCount) return;
+
+        String room      = (currentRoom != null && !currentRoom.isEmpty()) ? currentRoom : "session";
+        String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+        String filename  = "chat_log_" + room + "_" + timestamp + ".txt";
+
+        // Save to project root (working directory), same place as server_logs_*.txt
+        File file = new File(System.getProperty("user.dir"), filename);
+
+        try (PrintWriter pw = new PrintWriter(new BufferedWriter(new FileWriter(file)))) {
+
+            pw.println(room);
+            pw.println();
+
+            // One line per message: name: message <HH:mm:ss dd/MM/yyyy>
+            SimpleDateFormat dateFmt = new SimpleDateFormat("dd/MM/yyyy");
+            for (int i = 0; i < rowCount; i++) {
+                String user    = String.valueOf(tableModel.getValueAt(i, 0));
+                String msg     = String.valueOf(tableModel.getValueAt(i, 1));
+                String timeRaw = String.valueOf(tableModel.getValueAt(i, 2)); // e.g. 03:45:21pm
+                // Combine stored time with today's date for the bracket
+                String dateStr = dateFmt.format(new Date());
+                pw.println(user + ": " + msg + " <" + timeRaw + " " + dateStr + ">");
+            }
+
+
+
+        } catch (IOException ex) {
+            setLog("[ " + ts() + " ] Export failed: " + ex.getMessage());
+            return;
+        }
+
+        lastExportedRowCount = rowCount;
+        setLog("[ " + ts() + " ] Chat saved → " + file.getAbsolutePath());
+
+        // Only show popup for manual exports; silent for auto-saves
+        if (reason.equals("manual export")) {
+            JOptionPane.showMessageDialog(null,
+                    "Chat exported to:\n" + file.getAbsolutePath(),
+                    "Export Successful", JOptionPane.INFORMATION_MESSAGE);
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────
+
     void connect() {
         String[] creds = showLoginDialog();
         if (creds == null) System.exit(0);
@@ -534,7 +621,10 @@ public class ChatClientGUI {
                 return;
             }
 
-            SwingUtilities.invokeLater(() -> handle(firstLine));
+            SwingUtilities.invokeLater(() -> {
+                addRow("C", "HELLO " + connectedUsername , "proto");
+                handle(firstLine);
+            });
 
             new Thread(() -> {
                 try {
@@ -545,6 +635,8 @@ public class ChatClientGUI {
                     }
                 } catch (Exception ex) {
                     SwingUtilities.invokeLater(() -> {
+                        // ── AUTO-SAVE on unexpected disconnect ──
+                        exportChat("auto — connection lost");
                         statusDot.setForeground(C_RED);
                         setStatus("Disconnected");
                         setLog("[ " + ts() + " ] connection lost");
@@ -847,6 +939,8 @@ public class ChatClientGUI {
     void handle(String res) {
         // ── FIX: handle password reset before the generic 221 handler ──
         if (res.startsWith("421")) {
+            // ── AUTO-SAVE on admin kick / password reset ──
+            exportChat("auto — kicked: password reset by admin");
             setChatEnabled(false);
             addRow("System", "⚠ Your password was reset by the admin. Please sign in again.", "system");
             statusDot.setForeground(C_AMBER);
@@ -874,6 +968,7 @@ public class ChatClientGUI {
             setLog("[ " + ts() + " ] Status changed to " + res.substring(11).trim()); return;
         }
         if (res.startsWith("200 WELCOME") || res.equals("200")) {
+            addRow("S", "200 WELCOME", "proto");
             connectTime = System.currentTimeMillis();
             statusDot.setForeground(C_GREEN);
             setStatus("Connected as " + connectedUsername);
@@ -881,7 +976,6 @@ public class ChatClientGUI {
             userBadgeLabel.setText("  ● " + connectedUsername + "  ");
             userBadgeLabel.setForeground(C_ACCENT);
             setLog("[ " + ts() + " ] 200 WELCOME");
-            addRow("System", "Welcome " + connectedUsername + "! Use JOIN <room> to start.", "system");
             sendRaw("ROOMS"); sendRaw("USERS");
             new javax.swing.Timer(1000, e -> {
                 if (connectTime == 0) return;
@@ -941,6 +1035,8 @@ public class ChatClientGUI {
             String left = res.length() > 8 ? res.substring(8).trim() : "";
             addRow("S", res.trim(), "proto");
             if (left.equals(currentRoom)) {
+                // ── AUTO-SAVE when leaving current room ──
+                exportChat("auto — left room: " + left);
                 currentRoom = null; tableModel.setRowCount(0);
                 addRow("System", "You left " + left + ". Type JOIN <room> to join another.", "system");
                 setStatus("Connected as " + connectedUsername + "  ·  no room");
@@ -950,6 +1046,8 @@ public class ChatClientGUI {
             return;
         }
         if (res.startsWith("221")) {
+            // ── AUTO-SAVE on QUIT / server disconnect ──
+            exportChat("auto — quit / server disconnect");
             addRow("S", res.trim(), "proto");
             setChatEnabled(false);
             addRow("System", "Disconnected. Goodbye!", "system");
