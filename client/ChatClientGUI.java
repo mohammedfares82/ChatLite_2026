@@ -64,7 +64,6 @@ public class ChatClientGUI {
     java.util.Map<String,String> userStatuses = new java.util.concurrent.ConcurrentHashMap<>();
     javax.swing.Timer            roomsEndTimer = null;
 
-    // ── Export: track last auto-saved snapshot so we don't double-save ──
     private int lastExportedRowCount = 0;
 
     public ChatClientGUI() {
@@ -130,7 +129,6 @@ public class ChatClientGUI {
 
         center.add(makeSep());
 
-        // ── EXPORT CHAT button in top bar ──
         JButton exportBtn = new JButton("⬇ EXPORT");
         exportBtn.setFont(F_MONO_SM);
         exportBtn.setBackground(C_BG_PRIMARY);
@@ -536,46 +534,31 @@ public class ChatClientGUI {
         return field;
     }
 
-    // ════════════════════════════════════════════════════════════════
-    //  EXPORT CHAT
-    //  Format per line:  name: message <HH:mm:ss dd/MM/yyyy>
-    //  Saved to project root (same folder as server_logs_*.txt)
-    // ════════════════════════════════════════════════════════════════
+
     void exportChat(String reason) {
         int rowCount = tableModel.getRowCount();
         if (rowCount == 0) {
             setLog("[ " + ts() + " ] Nothing to export.");
             return;
         }
-
-        // Don't double-auto-save if nothing new was added since last save
         if (reason.startsWith("auto") && rowCount == lastExportedRowCount) return;
 
         String room      = (currentRoom != null && !currentRoom.isEmpty()) ? currentRoom : "session";
         String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
         String filename  = "chat_log_" + room + "_" + timestamp + ".txt";
-
-        // Save to project root (working directory), same place as server_logs_*.txt
         File file = new File(System.getProperty("user.dir"), filename);
 
         try (PrintWriter pw = new PrintWriter(new BufferedWriter(new FileWriter(file)))) {
-
             pw.println(room);
             pw.println();
-
-            // One line per message: name: message <HH:mm:ss dd/MM/yyyy>
             SimpleDateFormat dateFmt = new SimpleDateFormat("dd/MM/yyyy");
             for (int i = 0; i < rowCount; i++) {
                 String user    = String.valueOf(tableModel.getValueAt(i, 0));
                 String msg     = String.valueOf(tableModel.getValueAt(i, 1));
-                String timeRaw = String.valueOf(tableModel.getValueAt(i, 2)); // e.g. 03:45:21pm
-                // Combine stored time with today's date for the bracket
+                String timeRaw = String.valueOf(tableModel.getValueAt(i, 2));
                 String dateStr = dateFmt.format(new Date());
                 pw.println(user + ": " + msg + " <" + timeRaw + " " + dateStr + ">");
             }
-
-
-
         } catch (IOException ex) {
             setLog("[ " + ts() + " ] Export failed: " + ex.getMessage());
             return;
@@ -584,7 +567,6 @@ public class ChatClientGUI {
         lastExportedRowCount = rowCount;
         setLog("[ " + ts() + " ] Chat saved → " + file.getAbsolutePath());
 
-        // Only show popup for manual exports; silent for auto-saves
         if (reason.equals("manual export")) {
             JOptionPane.showMessageDialog(null,
                     "Chat exported to:\n" + file.getAbsolutePath(),
@@ -592,7 +574,6 @@ public class ChatClientGUI {
         }
     }
 
-    // ────────────────────────────────────────────────────────────────
 
     void connect() {
         String[] creds = showLoginDialog();
@@ -622,7 +603,7 @@ public class ChatClientGUI {
             }
 
             SwingUtilities.invokeLater(() -> {
-                addRow("C", "HELLO " + connectedUsername , "proto");
+                addRow("C", "HELLO " + connectedUsername, "proto");
                 handle(firstLine);
             });
 
@@ -635,7 +616,6 @@ public class ChatClientGUI {
                     }
                 } catch (Exception ex) {
                     SwingUtilities.invokeLater(() -> {
-                        // ── AUTO-SAVE on unexpected disconnect ──
                         exportChat("auto — connection lost");
                         statusDot.setForeground(C_RED);
                         setStatus("Disconnected");
@@ -877,6 +857,7 @@ public class ChatClientGUI {
         return result[0];
     }
 
+
     void sendMessage() {
         String raw = inputField.getText().trim();
         if (raw.isEmpty()) return;
@@ -936,10 +917,9 @@ public class ChatClientGUI {
 
     void sendRaw(String msg) { if (out != null) out.println(msg); }
 
+
     void handle(String res) {
-        // ── FIX: handle password reset before the generic 221 handler ──
         if (res.startsWith("421")) {
-            // ── AUTO-SAVE on admin kick / password reset ──
             exportChat("auto — kicked: password reset by admin");
             setChatEnabled(false);
             addRow("System", "⚠ Your password was reset by the admin. Please sign in again.", "system");
@@ -1035,7 +1015,6 @@ public class ChatClientGUI {
             String left = res.length() > 8 ? res.substring(8).trim() : "";
             addRow("S", res.trim(), "proto");
             if (left.equals(currentRoom)) {
-                // ── AUTO-SAVE when leaving current room ──
                 exportChat("auto — left room: " + left);
                 currentRoom = null; tableModel.setRowCount(0);
                 addRow("System", "You left " + left + ". Type JOIN <room> to join another.", "system");
@@ -1046,7 +1025,6 @@ public class ChatClientGUI {
             return;
         }
         if (res.startsWith("221")) {
-            // ── AUTO-SAVE on QUIT / server disconnect ──
             exportChat("auto — quit / server disconnect");
             addRow("S", res.trim(), "proto");
             setChatEnabled(false);
@@ -1058,10 +1036,20 @@ public class ChatClientGUI {
             try { if (socket != null) socket.close(); } catch (Exception ignored) {}
             return;
         }
+
+
         if (res.contains(":")) {
             String[] parts = res.split(":", 2);
             String user = parts[0].trim();
             String msg  = parts[1].trim();
+
+
+            if (user.equals("System") && msg.contains("[BROADCAST]")) {
+                addRow("Admin", msg.replace("[BROADCAST]", "").trim(), "broadcast");
+                setLog("[ " + ts() + " ] Broadcast received");
+                return;
+            }
+
             if (user.equals("System") && msg.contains(" is now ")) {
                 int idx = msg.indexOf(" is now ");
                 userStatuses.put(msg.substring(0, idx).trim(), msg.substring(idx+8).trim());
@@ -1104,6 +1092,7 @@ public class ChatClientGUI {
     void setStatus(String txt) { if (statusLabel != null) statusLabel.setText(txt); }
     void setLog   (String txt) { if (logLabel    != null) logLabel.setText(txt); }
     String ts() { return new SimpleDateFormat("HH:mm:ss").format(new Date()); }
+
 
     class RoomCellRenderer extends DefaultListCellRenderer {
         @Override public Component getListCellRendererComponent(
@@ -1167,16 +1156,22 @@ public class ChatClientGUI {
             if (sel) { c.setBackground(new Color(0xEE,0xED,0xFE)); c.setForeground(C_ACCENT_DARK); return c; }
             c.setBackground(row % 2 == 0 ? C_BG_PRIMARY : new Color(0xFA,0xFA,0xF8));
             switch (type) {
-                case "joined" -> c.setForeground(col == 0 ? C_TEXT_MUTED : C_GREEN);
-                case "left"   -> c.setForeground(col == 0 ? C_TEXT_MUTED : C_RED);
-                case "pm"     -> { c.setForeground(C_RED); c.setBackground(new Color(0xFF,0xF0,0xEE)); }
-                case "system" -> c.setForeground(C_TEXT_MUTED);
-                case "proto"  -> {
+                case "joined"    -> c.setForeground(col == 0 ? C_TEXT_MUTED : C_GREEN);
+                case "left"      -> c.setForeground(col == 0 ? C_TEXT_MUTED : C_RED);
+                case "pm"        -> { c.setForeground(C_RED); c.setBackground(new Color(0xFF,0xF0,0xEE)); }
+
+                case "broadcast" -> {
+                    c.setBackground(new Color(0xFF, 0xF8, 0xE1));
+                    c.setForeground(col == 0 ? C_AMBER : new Color(0x7A, 0x5C, 0x00));
+                    c.setFont(F_MONO_B);
+                }
+                case "system"    -> c.setForeground(C_TEXT_MUTED);
+                case "proto"     -> {
                     c.setBackground(new Color(0xF0,0xF0,0xFF));
                     c.setForeground(col == 0 ? C_ACCENT : new Color(0x18,0x5F,0xA5));
                     c.setFont(F_MONO_SM);
                 }
-                default -> c.setForeground(col == 0 ? C_ACCENT : C_TEXT_MAIN);
+                default          -> c.setForeground(col == 0 ? C_ACCENT : C_TEXT_MAIN);
             }
             if (col == 2) c.setForeground(C_TEXT_MUTED);
             ((JLabel) c).setBorder(BorderFactory.createEmptyBorder(0, col == 0 ? 14 : 8, 0, 8));
