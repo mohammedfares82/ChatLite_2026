@@ -12,6 +12,9 @@ import java.util.Date;
 
 public class ServerConsoleGUI {
 
+
+    public static ServerConsoleGUI instance;
+
     static final Color C_DARK         = new Color(0x1A, 0x1A, 0x2E);
     static final Color C_BG_PRIMARY   = new Color(0xFF, 0xFF, 0xFF);
     static final Color C_BG_SECONDARY = new Color(0xF5, 0xF5, 0xF0);
@@ -44,6 +47,9 @@ public class ServerConsoleGUI {
     boolean      serverRunning = false;
 
     public ServerConsoleGUI() {
+
+        instance = this;
+
         JFrame frame = new JFrame("ChatLite Server Console - [RUNNING]");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(1100, 700);
@@ -67,6 +73,19 @@ public class ServerConsoleGUI {
         new javax.swing.Timer(3000, e -> refreshSessions()).start();
     }
 
+
+
+    public void logMessage(String from, String room, String content) {
+        appendLog("MSG", from + " → [" + room + "]: " + content);
+    }
+
+
+    public void logEvent(String type, String message) {
+        appendLog(type, message);
+    }
+
+
+
     void startServer(int port) {
         UserManager.reset();
         RoomManager.reset();
@@ -79,7 +98,7 @@ public class ServerConsoleGUI {
                     statusValueLabel.setForeground(C_GREEN);
                     statusValueLabel.setText("ONLINE");
                 });
-                appendLog("INFO", "Server started on TCP:" + port + " — ChatServer.java no longer needed.");
+                appendLog("INFO", "Server started on TCP:" + port);
                 while (serverRunning) {
                     Socket client = serverSocket.accept();
                     String ip = client.getInetAddress().getHostAddress();
@@ -301,7 +320,6 @@ public class ServerConsoleGUI {
             int confirm = JOptionPane.showConfirmDialog(null, "Delete user '" + sel + "'?",
                     "Confirm Delete", JOptionPane.YES_NO_OPTION);
             if (confirm == JOptionPane.YES_OPTION) {
-                // ── FIX: kick the active session before unregistering ──
                 ClientSession activeSession = UserManager.getUser(sel);
                 if (activeSession != null) {
                     try {
@@ -335,7 +353,6 @@ public class ServerConsoleGUI {
                 return;
             }
             UserManager.registerUsername(sel, newPass.trim());
-            // ── FIX: disconnect active session so user must re-login with new password ──
             ClientSession activeSession = UserManager.getUser(sel);
             if (activeSession != null) {
                 try {
@@ -454,12 +471,25 @@ public class ServerConsoleGUI {
         });
         btnRow.add(kickBtn);
 
+
         JButton broadcastBtn = makeAccentButton("Send Broadcast Msg...  v");
         broadcastBtn.addActionListener(e -> {
             String msg = JOptionPane.showInputDialog(null, "Broadcast message:",
                     "Send Broadcast", JOptionPane.PLAIN_MESSAGE);
             if (msg != null && !msg.isBlank()) {
-                appendLog("BROADCAST", "Admin broadcast: " + msg);
+                int count = 0;
+                for (ClientSession s : UserManager.getAllUsers()) {
+                    try {
+                        PrintWriter clientOut = new PrintWriter(
+                                s.getConnectionSocket().getOutputStream(), true);
+
+                        clientOut.println("System: \uD83D\uDCE3 [BROADCAST] " + msg);
+                        count++;
+                    } catch (Exception ex) {
+                        appendLog("ERROR", "Broadcast failed for: " + s.getUsername());
+                    }
+                }
+                appendLog("BROADCAST", "Admin broadcast sent to " + count + " user(s): " + msg);
             }
         });
         btnRow.add(broadcastBtn);
@@ -501,47 +531,6 @@ public class ServerConsoleGUI {
         panel.setPreferredSize(new Dimension(260, 0));
         panel.setBackground(C_BG_PRIMARY);
         panel.add(makeSettingsPanel(), BorderLayout.NORTH);
-        return panel;
-    }
-
-    JPanel makeMailboxPanel() {
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(C_BG_PRIMARY);
-        panel.setBorder(BorderFactory.createLineBorder(C_BORDER, 1));
-        panel.add(makeSectionHeader("MAILBOX STATISTICS (Real-Time)"), BorderLayout.NORTH);
-
-        mailboxModel = new DefaultTableModel(
-                new String[]{"User", "Inbox", "Sent", "Archv size"}, 0) {
-            public boolean isCellEditable(int r, int c) { return false; }
-        };
-
-        JTable mailTable = new JTable(mailboxModel);
-        mailTable.setFont(F_MONO_SM);
-        mailTable.setRowHeight(24);
-        mailTable.setBackground(C_BG_PRIMARY);
-        mailTable.setGridColor(new Color(0, 0, 0, 12));
-        mailTable.setShowVerticalLines(false);
-        mailTable.setIntercellSpacing(new Dimension(0, 0));
-        mailTable.getTableHeader().setFont(F_MONO_B_SM);
-        mailTable.getTableHeader().setBackground(C_BG_SECONDARY);
-        mailTable.getTableHeader().setForeground(C_TEXT_MUTED);
-        mailTable.getColumnModel().getColumn(0).setPreferredWidth(72);
-        mailTable.getColumnModel().getColumn(1).setPreferredWidth(40);
-        mailTable.getColumnModel().getColumn(2).setPreferredWidth(40);
-        mailTable.getColumnModel().getColumn(3).setPreferredWidth(70);
-
-        JScrollPane scroll = new JScrollPane(mailTable);
-        styleScrollPane(scroll);
-        panel.add(scroll, BorderLayout.CENTER);
-
-        JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 6));
-        btnRow.setBackground(C_BG_SECONDARY);
-        btnRow.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, C_BORDER));
-        JButton forceBtn = makeWideButton("Force Cleanup Now (Archive > 30 days)");
-        forceBtn.setFont(new Font("Courier New", Font.PLAIN, 9));
-        forceBtn.addActionListener(e -> appendLog("CLEANUP", "Archive cleanup triggered by admin."));
-        btnRow.add(forceBtn);
-        panel.add(btnRow, BorderLayout.SOUTH);
         return panel;
     }
 
@@ -636,7 +625,8 @@ public class ServerConsoleGUI {
         saveBtn.addActionListener(e -> saveLogs());
 
         JComboBox<String> filterCombo = new JComboBox<>(
-                new String[]{"Filter: All", "INFO", "AUTH", "SEND", "ERROR", "KICK", "BROADCAST"});
+                new String[]{"Filter: All", "INFO", "AUTH", "MSG", "PM", "ROOM",
+                        "ERROR", "KICK", "BROADCAST"});
         filterCombo.setFont(F_MONO_SM);
         filterCombo.setBackground(C_BG_PRIMARY);
 
